@@ -1,0 +1,14 @@
+Profiles/*
+Scripts/*
+.vscode/*
+Experts/Advisors/*
+Experts/Examples/*
+Experts/Market/*
+Experts/Position Sizer/*
+Include/*
+Libraries/*
+Logs/*
+Services/*
+Files/*
+Images/*
+experts.dat
