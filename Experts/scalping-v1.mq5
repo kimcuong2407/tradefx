@@ -29,7 +29,7 @@ void OnDeinit(const int reason)
 //+------------------------------------------------------------------+
 void OnTick()
 {
-   onStart();
+  onStart();
   // for (int i = 0; i < ArraySize(Array); i++)
   // {
   //   Print("element - " + i+" -" + Array[i]);
@@ -46,11 +46,13 @@ void OnTrade()
 
 void onStart()
 {
-  int supportResistance = iCustom(_Symbol, _Period, "Support-and-Resistance-Lines/MQL5/Indicators/MQLTA MT5 Support Resistance Lines");
-  int totalCopy = CopyBuffer(supportResistance, "Array", 0, 10, ArrayBuffer);
+  int totalSize = 25;
+  ArrayResize(ArrayBuffer, totalSize);
+  int supportResistance = iCustom(_Symbol, _Period, "MQLTA MT5 Support Resistance Lines");
+  int totalCopy = CopyBuffer(supportResistance, 8, 0, totalSize, ArrayBuffer);
   printf("EA totalCopy - %d", totalCopy);
   for (int i = 0; i < totalCopy; i++)
   {
-    printf("EA element - %d - value: %f", i,  ArrayBuffer[i]);
+    printf("EA element - %d - value: %f", i, ArrayBuffer[i]);
   }
 }
