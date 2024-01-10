@@ -20,60 +20,61 @@
 #property indicator_type2 DRAW_ARROW
 #property indicator_style2 STYLE_SOLID
 #property indicator_width2 1
+#property indicator_label3 "ArrayBuffer"
 
 // Change it to true if you broker uses extra digit in quotes
-input bool UseExtraDigit = false;
+bool UseExtraDigit = false;
 
-input bool Show_Alert = false;
+bool Show_Alert = false;
 
-input bool Display_ShootStar_2 = false;
-input bool Show_ShootStar_Alert_2 = false;
-input bool Display_ShootStar_3 = false;
-input bool Show_ShootStar_Alert_3 = false;
-input bool Display_ShootStar_4 = false;
-input bool Show_ShootStar_Alert_4 = false;
-input color Color_ShootStar = DeepPink;
+bool Display_ShootStar_2 = false;
+bool Show_ShootStar_Alert_2 = false;
+bool Display_ShootStar_3 = false;
+bool Show_ShootStar_Alert_3 = false;
+bool Display_ShootStar_4 = false;
+bool Show_ShootStar_Alert_4 = false;
+color Color_ShootStar = DeepPink;
 int Text_ShootStar = 10;
 
-input bool Display_Hammer_2 = false;
-input bool Show_Hammer_Alert_2 = false;
-input bool Display_Hammer_3 = false;
-input bool Show_Hammer_Alert_3 = false;
-input bool Display_Hammer_4 = false;
-input bool Show_Hammer_Alert_4 = false;
-input color Color_Hammer = Blue;
+bool Display_Hammer_2 = false;
+bool Show_Hammer_Alert_2 = false;
+bool Display_Hammer_3 = false;
+bool Show_Hammer_Alert_3 = false;
+bool Display_Hammer_4 = false;
+bool Show_Hammer_Alert_4 = false;
+color Color_Hammer = Blue;
 int Text_Hammer = 10;
 
-input bool Display_Doji = false;
-input bool Show_Doji_Alert = false;
-input color Color_Doji = SpringGreen;
+bool Display_Doji = false;
+bool Show_Doji_Alert = false;
+color Color_Doji = SpringGreen;
 int Text_Doji = 10;
 
-input bool Display_Stars = false;
-input bool Show_Stars_Alert = false;
-input int Star_Body_Length = 5;
-input color Color_Star = Aqua;
+bool Display_Stars = false;
+bool Show_Stars_Alert = false;
+int Star_Body_Length = 5;
+color Color_Star = Aqua;
 int Text_Star = 10;
 
-input bool Display_Dark_Cloud_Cover = false;
-input bool Show_DarkCC_Alert = false;
-input color Color_DarkCC = Brown;
+bool Display_Dark_Cloud_Cover = false;
+bool Show_DarkCC_Alert = false;
+color Color_DarkCC = Brown;
 int Text_DarkCC = 10;
 
-input bool Display_Piercing_Line = false;
-input bool Show_Piercing_Line_Alert = false;
-input color Color_Piercing_Line = Blue;
+bool Display_Piercing_Line = false;
+bool Show_Piercing_Line_Alert = false;
+color Color_Piercing_Line = Blue;
 int Text_Piercing_Line = 10;
 
-input bool Display_Bearish_Engulfing = true;
-input bool Show_Bearish_Engulfing_Alert = false;
-input color Color_Bearish_Engulfing = Red;
+bool Display_Bearish_Engulfing = true;
+bool Show_Bearish_Engulfing_Alert = false;
+color Color_Bearish_Engulfing = Red;
 int Text_Bearish_Engulfing = 8;
 
-input bool Display_Bullish_Engulfing = true;
-input bool Show_Bullish_Engulfing_Alert = false;
-input color Color_Bullish_Engulfing = Blue;
-input int MaxBars = 100;
+bool Display_Bullish_Engulfing = true;
+bool Show_Bullish_Engulfing_Alert = false;
+color Color_Bullish_Engulfing = Blue;
+int MaxBars = 100;
 int Text_Bullish_Engulfing = 8;
 
 //---- buffers
@@ -101,7 +102,13 @@ int Piercing_Candle_Length = 0;
 int Engulfing_Length = 0;
 double Candle_WickBody_Percent = 0;
 int CandleLength = 0;
-//+------------------------------------------------------------------+
+
+int CurrentShiftEngulfingUp = 0;
+int CurrentShiftEngulfingDown = 0;
+double ArrayBuffer[2];
+int CalculatedBars = 0;
+
+//+-------------------------------------------------------  -----------+
 //| Custom indicator initialization function                         |
 //+------------------------------------------------------------------+
 void OnInit()
@@ -113,9 +120,11 @@ void OnInit()
 
   SetIndexBuffer(0, upArrow);
   SetIndexBuffer(1, downArrow);
+  SetIndexBuffer(2, ArrayBuffer, INDICATOR_DATA);
 
   ArraySetAsSeries(upArrow, true);
   ArraySetAsSeries(downArrow, true);
+  ArraySetAsSeries(ArrayBuffer, true);
 
   Comment("\n", "\n", "Bearish",
           "\n", "SS 2,3,4 - Shooting Star",
@@ -442,6 +451,14 @@ int OnCalculate(const int rates_total,
   BodyHigh = 0;
   BodyLow = 0;
   int CumOffset;
+  if(CalculatedBars == prev_calculated) {
+    return (rates_total);
+  }
+  if (CalculatedBars != prev_calculated)
+    {
+        CalculatedBars = prev_calculated;
+    }
+
 
   if (prevtime == Time[0])
   {
@@ -640,7 +657,10 @@ int OnCalculate(const int rates_total,
         MarkPattern(GetName("S_E", Time[shift]), Time[shift1], High[shift1] + (Pointer_Offset + Offset_Bearish_Engulfing + High_Offset + CumOffset) * _Point, "S_E", Text_Bearish_Engulfing, Color_Bearish_Engulfing);
         CumOffset = CumOffset + IncOffset;
         downArrow[shift1] = High[shift1] + (Pointer_Offset * _Point);
-        // printf("Bearish Engulfing Pattern: %d -  %f",shift1, Close[shift1]);
+        if(CurrentShiftEngulfingDown == 0) {
+          CurrentShiftEngulfingDown= shift1;
+          ArrayBuffer[0] = shift1;
+        } 
       }
       if (Show_Bearish_Engulfing_Alert)
       {
@@ -791,6 +811,10 @@ int OnCalculate(const int rates_total,
         MarkPattern(GetName("L_E", Time[shift]), Time[shift1], Low[shift1] - (Pointer_Offset + Offset_Bullish_Engulfing + CumOffset) * _Point, "L_E", Text_Bullish_Engulfing, Color_Bullish_Engulfing);
         CumOffset = CumOffset + IncOffset;
         upArrow[shift1] = Low[shift1] - (Pointer_Offset * _Point);
+        if(CurrentShiftEngulfingUp == 0) {
+           CurrentShiftEngulfingUp = shift1;
+          ArrayBuffer[1] = shift1;
+        }
       }
       if (Show_Bullish_Engulfing_Alert)
       {
@@ -810,7 +834,7 @@ int OnCalculate(const int rates_total,
     }
     CumOffset = 0;
   } // End of for loop
-
+  
   return (rates_total);
 }
 //+------------------------------------------------------------------+
