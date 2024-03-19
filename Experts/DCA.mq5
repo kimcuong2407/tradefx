@@ -15,10 +15,12 @@
 CFile file;
 CTrade trade;
 
-input double PointWin = 3000;
-input double PointLoss = 2100;
+input double PointFirstTrade = 200;
+input double PointSecondTrade = 280;
 input double LotSize = 0.01;
 input int RiskReward = 2;
+input int MaxTrade = 5;
+input double TakeProfitFixed = 30;
 input string lotVolumeXX = "1|3|3|6|6|13|14|30|31";
 
 const int ModeBuy = 1;
@@ -36,18 +38,19 @@ struct ContentFile
 };
 
 double priceCheck = 0;
+int currentTypeTrade = 0;
 const string fileNameHedge = "hedge.txt";
 const string fileNameLog = "log.txt";
 const string fileTicket = "checkTicket.txt";
 const ulong magicNumberCurrent = 33323;
 datetime lastCandleTime = 0;
-
+bool clearTrade = false;
 //+------------------------------------------------------------------+
 //| Expert initialization function                                   |
 //+------------------------------------------------------------------+
 int OnInit()
 {
-
+  Print(bool(3 % 2));
   CreateFileIfNotExists(fileNameHedge);
   CreateFileIfNotExists(fileTicket);
 
@@ -79,6 +82,8 @@ void OnTick()
   if (totalPosition == 0)
   {
     DeleteFileContents(fileNameHedge);
+    if (!CheckCloseBar())
+      return;
     int mode = CheckRsi();
     if (mode == ModePending)
     {
@@ -87,33 +92,34 @@ void OnTick()
     ContentFile content = GetDefaultContentFileBuySell(mode);
     OpenTrade(content);
     priceCheck = content.Sl;
+    currentTypeTrade = mode;
     return;
   }
-  if (CheckCloseBar())
-  {
-    IsAnyTradeClosedByTP();
-  }
-  // todo: kiểm tra xem file có lệnh không nếu có thì gắn priceCheck
+
   if (priceCheck > 0)
   {
-    ContentFile contents[];
-    ReadFile(fileNameHedge, contents);
-    ContentFile lastContent = contents[ArraySize(contents) - 1];
-    if (lastContent.BuySell == ModeBuy)
+
+    if (currentTypeTrade == ModeBuy)
     {
-      if (SymbolInfoDouble(_Symbol, SYMBOL_BID) <= priceCheck)
+      if (SymbolInfoDouble(_Symbol, SYMBOL_BID) <= priceCheck) // kiểm tra lệnh trc đó chạm sl thì vào lệnh mới
       {
-        ContentFile content = GetDefaultContentFileBuySell(lastContent.BuySell == ModeBuy ? ModeSell : ModeBuy);
+        int mode = currentTypeTrade == ModeBuy ? ModeSell : ModeBuy;
+        ContentFile content = GetDefaultContentFileBuySell(mode);
         OpenTrade(content);
         priceCheck = content.Sl;
+        currentTypeTrade = mode;
       }
     }
-    else if (SymbolInfoDouble(_Symbol, SYMBOL_ASK) >= priceCheck)
+    else if (currentTypeTrade == ModeSell) // sell
     {
-      ContentFile content = GetDefaultContentFileBuySell(lastContent.BuySell == ModeBuy ? ModeSell : ModeBuy);
-      OpenTrade(content);
-
-      priceCheck = content.Sl;
+      if (SymbolInfoDouble(_Symbol, SYMBOL_ASK) >= priceCheck)
+      {
+        int mode = currentTypeTrade == ModeBuy ? ModeSell : ModeBuy;
+        ContentFile content = GetDefaultContentFileBuySell(mode);
+        OpenTrade(content);
+        priceCheck = content.Sl;
+        currentTypeTrade = mode;
+      }
     }
   }
   // nếu đang không có lệnh thì vào lệnh`∑
@@ -123,13 +129,13 @@ void OnTick()
 //+------------------------------------------------------------------+
 void OnTrade()
 {
-  // IsAnyTradeClosedByTP();
+  IsAnyTradeClosedByTP();
 }
 //+------------------------------------------------------------------+
 void IsAnyTradeClosedByTP()
 {
 
-  datetime timeAgo = TimeCurrent() - 60 * 1; // 30 phút được tính bằng giây
+  datetime timeAgo = TimeCurrent() - 1; // 30 phút được tính bằng giây
   if (HistorySelect(timeAgo, TimeCurrent()))
   {
     int totalDeals = HistoryDealsTotal();
@@ -166,6 +172,23 @@ bool CheckCloseBar()
   }
   return false;
 }
+
+double GetProfitOpenningByMagicNumber()
+{
+  double totalProfit = 0.0;
+
+  for (int i = 0; i < PositionsTotal(); i++)
+  {
+    ulong positionTicket = PositionGetTicket(i);
+    double profit = 0;
+    double swap = 0.0;
+
+    PositionGetDouble(POSITION_PROFIT, profit);
+    PositionGetDouble(POSITION_SWAP, swap);
+    totalProfit += profit + swap;
+  }
+  return totalProfit;
+}
 // Đóng tất cả các lệnh đang mở
 void CloseAllOpenPositions()
 {
@@ -175,18 +198,22 @@ void CloseAllOpenPositions()
     trade.PositionClose(positionTicket);
   }
   priceCheck = 0;
+  currentTypeTrade = 0;
   DeleteFileContents(fileNameHedge);
 }
 
 double CalculateStopLoss(int BuySell)
 {
   double pointValue = SymbolInfoDouble(_Symbol, SYMBOL_POINT);
-
+  ContentFile content[];
+  ReadFile(fileNameHedge, content);
+  int totalTrade = ArraySize(content);
+  double points = bool(totalTrade % 2) ? PointSecondTrade : PointFirstTrade;
   double result;
   if (BuySell == ModeBuy)
-    result = SymbolInfoDouble(_Symbol, SYMBOL_ASK) - PointLoss * pointValue;
+    result = SymbolInfoDouble(_Symbol, SYMBOL_ASK) - points * pointValue;
   else
-    result = SymbolInfoDouble(Symbol(), SYMBOL_BID) + PointLoss * pointValue;
+    result = SymbolInfoDouble(Symbol(), SYMBOL_BID) + points * pointValue;
   int digits = int(SymbolInfoInteger(_Symbol, SYMBOL_DIGITS));
   return NormalizeDouble(result, digits);
 }
@@ -209,10 +236,14 @@ double CalculateTakeProfit(int mode)
 {
   double pointValue = SymbolInfoDouble(_Symbol, SYMBOL_POINT);
   double result;
+  ContentFile content[];
+  ReadFile(fileNameHedge, content);
+  int totalTrade = ArraySize(content);
+  double points = bool(totalTrade % 2) ? PointSecondTrade : PointFirstTrade;
   if (mode == ModeBuy)
-    result = SymbolInfoDouble(_Symbol, SYMBOL_ASK) + PointWin * RiskReward * pointValue;
+    result = SymbolInfoDouble(_Symbol, SYMBOL_ASK) + points * RiskReward * pointValue;
   else
-    result = SymbolInfoDouble(Symbol(), SYMBOL_BID) - PointWin * RiskReward * pointValue;
+    result = SymbolInfoDouble(Symbol(), SYMBOL_BID) - points * RiskReward * pointValue;
 
   int digits = int(SymbolInfoInteger(_Symbol, SYMBOL_DIGITS));
   return NormalizeDouble(result, digits);
