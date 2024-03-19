@@ -15,13 +15,12 @@
 CFile file;
 CTrade trade;
 
-input double PointFirstTrade = 200;
-input double PointSecondTrade = 280;
-input double LotSize = 0.01;
+input double Points = 200; // số point = biên độ giao động
+input double Money1R = 10; // 1R = 10$
 input int RiskReward = 2;
 input int MaxTrade = 5;
 input double TakeProfitFixed = 30;
-input string lotVolumeXX = "1|3|3|6|6|13|14|30|31";
+input string lotSizes = "0.05|0.09|0.09|0.12|0.16|0.21|0.28|0.37|0.49|0.66|0.88|1.17|1.56|2.08|2.78";
 
 const int ModeBuy = 1;
 const int ModeSell = 2;
@@ -50,9 +49,7 @@ bool clearTrade = false;
 //+------------------------------------------------------------------+
 int OnInit()
 {
-  Print(bool(3 % 2));
   CreateFileIfNotExists(fileNameHedge);
-  CreateFileIfNotExists(fileTicket);
 
   return (INIT_SUCCEEDED);
 }
@@ -61,7 +58,7 @@ int OnInit()
 //+------------------------------------------------------------------+
 void OnDeinit(const int reason)
 {
-  // DeleteFileContents(fileNameHedge);
+  DeleteFileContents(fileNameHedge);
 }
 //+------------------------------------------------------------------+
 //| Expert tick function                                             |
@@ -81,9 +78,9 @@ void OnTick()
   // Todo: sau này kiểm tra có signal thì vào lệnh sau
   if (totalPosition == 0)
   {
-    DeleteFileContents(fileNameHedge);
     if (!CheckCloseBar())
       return;
+    DeleteFileContents(fileNameHedge);
     int mode = CheckRsi();
     if (mode == ModePending)
     {
@@ -98,7 +95,6 @@ void OnTick()
 
   if (priceCheck > 0)
   {
-
     if (currentTypeTrade == ModeBuy)
     {
       if (SymbolInfoDouble(_Symbol, SYMBOL_BID) <= priceCheck) // kiểm tra lệnh trc đó chạm sl thì vào lệnh mới
@@ -205,15 +201,11 @@ void CloseAllOpenPositions()
 double CalculateStopLoss(int BuySell)
 {
   double pointValue = SymbolInfoDouble(_Symbol, SYMBOL_POINT);
-  ContentFile content[];
-  ReadFile(fileNameHedge, content);
-  int totalTrade = ArraySize(content);
-  double points = bool(totalTrade % 2) ? PointSecondTrade : PointFirstTrade;
   double result;
   if (BuySell == ModeBuy)
-    result = SymbolInfoDouble(_Symbol, SYMBOL_ASK) - points * pointValue;
+    result = SymbolInfoDouble(_Symbol, SYMBOL_ASK) - Points * pointValue;
   else
-    result = SymbolInfoDouble(Symbol(), SYMBOL_BID) + points * pointValue;
+    result = SymbolInfoDouble(Symbol(), SYMBOL_BID) + Points * pointValue;
   int digits = int(SymbolInfoInteger(_Symbol, SYMBOL_DIGITS));
   return NormalizeDouble(result, digits);
 }
@@ -236,14 +228,10 @@ double CalculateTakeProfit(int mode)
 {
   double pointValue = SymbolInfoDouble(_Symbol, SYMBOL_POINT);
   double result;
-  ContentFile content[];
-  ReadFile(fileNameHedge, content);
-  int totalTrade = ArraySize(content);
-  double points = bool(totalTrade % 2) ? PointSecondTrade : PointFirstTrade;
   if (mode == ModeBuy)
-    result = SymbolInfoDouble(_Symbol, SYMBOL_ASK) + points * RiskReward * pointValue;
+    result = SymbolInfoDouble(_Symbol, SYMBOL_ASK) + Points * RiskReward * pointValue;
   else
-    result = SymbolInfoDouble(Symbol(), SYMBOL_BID) - points * RiskReward * pointValue;
+    result = SymbolInfoDouble(Symbol(), SYMBOL_BID) - Points * RiskReward * pointValue;
 
   int digits = int(SymbolInfoInteger(_Symbol, SYMBOL_DIGITS));
   return NormalizeDouble(result, digits);
@@ -254,9 +242,8 @@ double CalculateLotSize()
   ContentFile content[];
   ReadFile(fileNameHedge, content);
   string lotVolumeArray[];
-  ConvertStringToArray(lotVolumeXX, lotVolumeArray);
-  double xx = ArraySize(content) > 0 ? StringToDouble(lotVolumeArray[ArraySize(content)]) : 1;
-  return xx * LotSize;
+  ConvertStringToArray(lotSizes, lotVolumeArray);
+  return StringToDouble(lotVolumeArray[ArraySize(content)]);
 }
 int CheckRsi()
 {
