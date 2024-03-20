@@ -21,6 +21,8 @@ input int RiskReward = 2;
 input int MaxTrade = 5;
 input double TakeProfitFixed = 30;
 input string lotSizes = "0.05|0.09|0.09|0.12|0.16|0.21|0.28|0.37|0.49|0.66|0.88|1.17|1.56|2.08|2.78";
+input int StartHour = 17; // Bắt đầu vào lệnh từ
+input int EndHour = 23;   // Kết thúc vào lệnh từ
 
 const int ModeBuy = 1;
 const int ModeSell = 2;
@@ -44,14 +46,15 @@ const string fileTicket = "checkTicket.txt";
 const ulong magicNumberCurrent = 33323;
 datetime lastCandleTime = 0;
 bool clearTrade = false;
+int totalTrade = 0;
 //+------------------------------------------------------------------+
 //| Expert initialization function                                   |
 //+------------------------------------------------------------------+
 int OnInit()
 {
   CreateFileIfNotExists(fileNameHedge);
-
   return (INIT_SUCCEEDED);
+
 }
 //+------------------------------------------------------------------+
 //| Expert deinitialization function                                 |
@@ -72,6 +75,8 @@ void OnTick()
     printf("Trade is not allowed");
     return;
   }
+  if (!IsTradeTime())
+    return;
 
   // kiểm tra position hiện tại có lệnh không
   int totalPosition = GetTotalPositionOpenByMagicNumber(magicNumberCurrent);
@@ -82,28 +87,30 @@ void OnTick()
       return;
     DeleteFileContents(fileNameHedge);
     int mode = CheckRsi();
-    if (mode == ModePending)
+    if (mode == ModePending && CheckAdx())
     {
       return;
     }
-    ContentFile content = GetDefaultContentFileBuySell(mode);
-    OpenTrade(content);
-    priceCheck = content.Sl;
-    currentTypeTrade = mode;
+    handleOpenTrade(mode);
     return;
   }
 
   if (priceCheck > 0)
   {
+    if (totalPosition >= MaxTrade)
+    {
+      if(GetProfitOpenningByMagicNumber() > TakeProfitFixed)
+      {
+        CloseAllOpenPositions();
+      }
+      return;
+    }
     if (currentTypeTrade == ModeBuy)
     {
       if (SymbolInfoDouble(_Symbol, SYMBOL_BID) <= priceCheck) // kiểm tra lệnh trc đó chạm sl thì vào lệnh mới
       {
         int mode = currentTypeTrade == ModeBuy ? ModeSell : ModeBuy;
-        ContentFile content = GetDefaultContentFileBuySell(mode);
-        OpenTrade(content);
-        priceCheck = content.Sl;
-        currentTypeTrade = mode;
+        handleOpenTrade(mode);
       }
     }
     else if (currentTypeTrade == ModeSell) // sell
@@ -111,10 +118,7 @@ void OnTick()
       if (SymbolInfoDouble(_Symbol, SYMBOL_ASK) >= priceCheck)
       {
         int mode = currentTypeTrade == ModeBuy ? ModeSell : ModeBuy;
-        ContentFile content = GetDefaultContentFileBuySell(mode);
-        OpenTrade(content);
-        priceCheck = content.Sl;
-        currentTypeTrade = mode;
+        handleOpenTrade(mode);
       }
     }
   }
@@ -126,6 +130,24 @@ void OnTick()
 void OnTrade()
 {
   IsAnyTradeClosedByTP();
+}
+
+bool IsTradeTime()
+{
+  MqlDateTime rightNow;
+  TimeCurrent(rightNow);
+  int hour = rightNow.hour;
+
+  return hour >= StartHour && hour < EndHour;
+}
+
+void handleOpenTrade(int mode)
+{
+  ContentFile content = GetDefaultContentFileBuySell(mode);
+  OpenTrade(content);
+  priceCheck = content.Sl;
+  currentTypeTrade = mode;
+  totalTrade++;
 }
 //+------------------------------------------------------------------+
 void IsAnyTradeClosedByTP()
@@ -195,6 +217,7 @@ void CloseAllOpenPositions()
   }
   priceCheck = 0;
   currentTypeTrade = 0;
+  totalTrade = 0;
   DeleteFileContents(fileNameHedge);
 }
 
@@ -244,6 +267,19 @@ double CalculateLotSize()
   string lotVolumeArray[];
   ConvertStringToArray(lotSizes, lotVolumeArray);
   return StringToDouble(lotVolumeArray[ArraySize(content)]);
+}
+bool CheckAdx()
+{
+  double bufferADX[];
+  ArraySetAsSeries(bufferADX, true);
+  int total = CopyBuffer(iADX(_Symbol, PERIOD_CURRENT, 14), 0, 0, 2, bufferADX);
+  double buffer = bufferADX[1];
+  int range = 30;
+  if (buffer > range)
+  {
+    return true;
+  }
+  return false;
 }
 int CheckRsi()
 {
@@ -430,3 +466,4 @@ void CloseAllPositions()
     printf("lastError = %d", GetLastError());
   }
 }
+
