@@ -23,6 +23,8 @@ input double TakeProfitFixed = 30;
 input string lotSizes = "0.05|0.09|0.09|0.12|0.16|0.21|0.28|0.37|0.49|0.66|0.88|1.17|1.56|2.08|2.78";
 input int StartHour = 17; // Bắt đầu vào lệnh từ
 input int EndHour = 23;   // Kết thúc vào lệnh từ
+input ENUM_TIMEFRAMES IndicatorTimeFrame = PERIOD_M15;
+input ulong magicNumberCurrent = 33323;
 
 const int ModeBuy = 1;
 const int ModeSell = 2;
@@ -37,24 +39,19 @@ struct ContentFile
   double Volume;
   double Ticket;
 };
-
-double priceCheck = 0;
-int currentTypeTrade = 0;
-const string fileNameHedge = "hedge.txt";
+string fileNameHedge = "hedge.txt";
 const string fileNameLog = "log.txt";
 const string fileTicket = "checkTicket.txt";
-const ulong magicNumberCurrent = 33323;
 datetime lastCandleTime = 0;
 bool clearTrade = false;
-int totalTrade = 0;
 //+------------------------------------------------------------------+
 //| Expert initialization function                                   |
 //+------------------------------------------------------------------+
 int OnInit()
 {
+  fileNameHedge = Symbol() + "_" + "_" + string(magicNumberCurrent) + "_hedge.txt";
   CreateFileIfNotExists(fileNameHedge);
   return (INIT_SUCCEEDED);
-
 }
 //+------------------------------------------------------------------+
 //| Expert deinitialization function                                 |
@@ -87,39 +84,37 @@ void OnTick()
       return;
     DeleteFileContents(fileNameHedge);
     int mode = CheckRsi();
-    if (mode == ModePending && CheckAdx())
+    if (CheckAdx() && (mode == ModeBuy || mode == ModeSell))
     {
-      return;
+      handleOpenTrade(mode);
     }
-    handleOpenTrade(mode);
     return;
   }
 
-  if (priceCheck > 0)
+  ContentFile contents[];
+  ReadFile(fileNameHedge, contents);
+
+  if (totalPosition >= MaxTrade)
   {
-    if (totalPosition >= MaxTrade)
+    if (GetProfitOpenningByMagicNumber() > TakeProfitFixed)
     {
-      if(GetProfitOpenningByMagicNumber() > TakeProfitFixed)
-      {
-        CloseAllOpenPositions();
-      }
-      return;
+      CloseAllOpenPositions();
     }
-    if (currentTypeTrade == ModeBuy)
+    return;
+  }
+  ContentFile lastTrade = contents[ArraySize(contents) - 1];
+  if (lastTrade.BuySell == ModeBuy)
+  {
+    if (SymbolInfoDouble(_Symbol, SYMBOL_BID) <= lastTrade.Sl) // kiểm tra lệnh trc đó chạm sl thì vào lệnh mới
     {
-      if (SymbolInfoDouble(_Symbol, SYMBOL_BID) <= priceCheck) // kiểm tra lệnh trc đó chạm sl thì vào lệnh mới
-      {
-        int mode = currentTypeTrade == ModeBuy ? ModeSell : ModeBuy;
-        handleOpenTrade(mode);
-      }
+      handleOpenTrade(ModeSell);
     }
-    else if (currentTypeTrade == ModeSell) // sell
+  }
+  else if (lastTrade.BuySell == ModeSell) // sell
+  {
+    if (SymbolInfoDouble(_Symbol, SYMBOL_ASK) >= lastTrade.Sl)
     {
-      if (SymbolInfoDouble(_Symbol, SYMBOL_ASK) >= priceCheck)
-      {
-        int mode = currentTypeTrade == ModeBuy ? ModeSell : ModeBuy;
-        handleOpenTrade(mode);
-      }
+      handleOpenTrade(ModeBuy);
     }
   }
   // nếu đang không có lệnh thì vào lệnh`∑
@@ -145,9 +140,6 @@ void handleOpenTrade(int mode)
 {
   ContentFile content = GetDefaultContentFileBuySell(mode);
   OpenTrade(content);
-  priceCheck = content.Sl;
-  currentTypeTrade = mode;
-  totalTrade++;
 }
 //+------------------------------------------------------------------+
 void IsAnyTradeClosedByTP()
@@ -215,9 +207,7 @@ void CloseAllOpenPositions()
     ulong positionTicket = PositionGetTicket(i);
     trade.PositionClose(positionTicket);
   }
-  priceCheck = 0;
-  currentTypeTrade = 0;
-  totalTrade = 0;
+
   DeleteFileContents(fileNameHedge);
 }
 
@@ -272,7 +262,7 @@ bool CheckAdx()
 {
   double bufferADX[];
   ArraySetAsSeries(bufferADX, true);
-  int total = CopyBuffer(iADX(_Symbol, PERIOD_CURRENT, 14), 0, 0, 2, bufferADX);
+  int total = CopyBuffer(iADX(_Symbol, IndicatorTimeFrame, 14), 0, 0, 2, bufferADX);
   double buffer = bufferADX[1];
   int range = 30;
   if (buffer > range)
@@ -285,7 +275,7 @@ int CheckRsi()
 {
   double bufferRSI[];
   ArraySetAsSeries(bufferRSI, true);
-  int total = CopyBuffer(iRSI(_Symbol, PERIOD_CURRENT, 14, PRICE_CLOSE), 0, 0, 4, bufferRSI);
+  int total = CopyBuffer(iRSI(_Symbol, IndicatorTimeFrame, 14, PRICE_CLOSE), 0, 0, 4, bufferRSI);
 
   double buffer = bufferRSI[1];
   double buffer1 = bufferRSI[2];
@@ -466,4 +456,3 @@ void CloseAllPositions()
     printf("lastError = %d", GetLastError());
   }
 }
-
